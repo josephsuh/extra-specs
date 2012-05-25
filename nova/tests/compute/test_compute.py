@@ -61,6 +61,7 @@ FLAGS = flags.FLAGS
 flags.DECLARE('stub_network', 'nova.compute.manager')
 flags.DECLARE('live_migration_retry_count', 'nova.compute.manager')
 flags.DECLARE('additional_compute_capabilities', 'nova.compute.manager')
+flags.DECLARE('instance_type_extra_specs', 'nova.compute.manager')
 
 
 FAKE_IMAGE_REF = 'fake-image-ref'
@@ -178,6 +179,38 @@ class BaseTestCase(test.TestCase):
         inst['rxtx_factor'] = 1
         inst.update(params)
         return db.instance_type_create(context, inst)['id']
+
+    def _create_fake_instance_with_extra_specs(self, params=None, \
+            type_name='m1.tiny'):
+        """Create a test instance"""
+        if not params:
+            params = {}
+
+        inst = {}
+        inst['vm_state'] = vm_states.ACTIVE
+        inst['image_ref'] = FAKE_IMAGE_REF
+        inst['reservation_id'] = 'r-fakeres'
+        inst['launch_time'] = '10'
+        inst['user_id'] = self.user_id
+        inst['project_id'] = self.project_id
+        inst['host'] = 'fake_host'
+        type_id = instance_types.get_instance_type_by_name(type_name)['id']
+        inst['instance_type_id'] = type_id
+        inst['ami_launch_index'] = 0
+        inst['memory_mb'] = 0
+        inst['root_gb'] = 0
+        inst['ephemeral_gb'] = 0
+        inst.update(params)
+        instance = db.instance_create(self.context, inst)
+
+        db.instance_type_extra_specs_update_or_create(
+                              self.context,
+                              type_id,
+                              dict(gpus=">=+ 2"))
+        actual_specs = db.instance_type_extra_specs_get(
+                              self.context,
+                              type_id)
+        return instance
 
     def _create_group(self):
         values = {'name': 'testgroup',
@@ -831,6 +864,20 @@ class ComputeTestCase(BaseTestCase):
 
         self.assertEquals(len(test_notifier.NOTIFICATIONS), 2)
         self.compute.terminate_instance(self.context, instance_uuid)
+
+    def test_get_and_run_with_instance_type_extra_specs(self):
+        """Ensure extra spec can be read from flag"""
+        FLAGS.instance_type_extra_specs = ["gpus:20", "fpus:4"]
+        org_context = self.context
+        self.context = context.get_admin_context()
+        self.compute._get_instance_type_extra_specs_capabilities(self.context)
+        self.assertEquals(self.compute.extra_specs['gpus'], '20')
+        self.assertEquals(self.compute.extra_specs['fpus'], '4')
+        inst_ref = self._create_fake_instance_with_extra_specs()
+        instance_uuid = inst_ref['uuid']
+        self.compute.run_instance(self.context, instance_uuid)
+        self.assertEquals(self.compute.extra_specs['gpus'], '18.0')
+        self.context = org_context
 
     def test_remove_fixed_ip_usage_notification(self):
         def dummy(*args, **kwargs):

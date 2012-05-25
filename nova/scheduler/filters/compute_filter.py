@@ -16,6 +16,7 @@
 from nova import log as logging
 from nova.scheduler import filters
 from nova import utils
+from types import *
 
 
 LOG = logging.getLogger(__name__)
@@ -30,12 +31,75 @@ class ComputeFilter(filters.BaseHostFilter):
         if 'extra_specs' not in instance_type:
             return True
 
-        # NOTE(lorinh): For now, we are just checking exact matching on the
-        # values. Later on, we want to handle numerical
-        # values so we can represent things like number of GPU cards
-        for key, value in instance_type['extra_specs'].iteritems():
-            if capabilities.get(key, None) != value:
+        # NOTE(jsuh): Now, it can do various operations
+        # =, s==, s!=, s>=, s>, s<=, s<, <in>, <or>, ==, !=, >=, <=
+        for key, req in instance_type['extra_specs'].iteritems():
+            cap = capabilities.get(key, None)
+            if cap == None:
                 return False
+            if type(req) == BooleanType or type(req) == IntType or \
+                type(req) == LongType or type(req) == FloatType:
+                    if cap != req:
+                        return False
+            else:
+                words = req.split()
+                if len(words) == 1:
+                    if cap != req:
+                        return False
+                else:
+                    op = words[0]
+                    new_req = words[1]
+                    for i in range (2,len(words)):
+                        new_req += words[i]
+
+                    if op == '=':
+                        if float(new_req) > float(cap):
+                            return False
+                    elif op == '<in>': # TBD: multiple ins
+                        if cap.find(new_req) == -1:
+                            return False
+                    elif op == '==':
+                        if float(new_req) != float(cap):
+                            return False
+                    elif op == '!=':
+                        if float(new_req) == float(cap):
+                            return False
+                    elif op == 's==':
+                        if new_req != cap:
+                            return False
+                    elif op == 's!=':
+                        if new_req == cap:
+                            return False
+                    elif op == 's<':
+                        if new_req <= cap:
+                            return False
+                    elif op == 's<=':
+                        if new_req < cap:
+                            return False
+
+                    elif op == 's>':
+                        if new_req >= cap:
+                            return False
+                    elif op == 's>=':
+                        if new_req > cap:
+                            return False
+                    elif op.find('<=') == 0:
+                        if float(new_req) < float(cap):
+                            return False
+                    elif op.find('>=') == 0:
+                        if float(new_req) > float(cap):
+                            return False
+                    elif op == '<or>': # Ex: <or> v1 <or> v2 <or> v3
+                        found = 0
+                        for idx in range (1, len(words), 2):
+                            if words[idx] == cap:
+                                found = 1
+                                break
+                        if found == 0:
+                            return False
+                    else:
+                        if float(cap) != float(req):
+                            return False
         return True
 
     def host_passes(self, host_state, filter_properties):

@@ -141,6 +141,12 @@ compute_opts = [
                'this functionality will be replaced when HostAggregates '
                'become more funtional for general grouping in Folsom. (see: '
                'http://etherpad.openstack.org/FolsomNovaHostAggregates-v2)'),
+    cfg.ListOpt('instance_type_extra_specs',
+               default=[],
+               help='a list of additional capabilities corresponding to '
+               'instacne_type_extra_specs for this compute '
+               'host to advertise. Valid entries are name=value, pairs '
+               'For example, "key1:val1, key2:val2"'),
 
     ]
 
@@ -248,6 +254,7 @@ class ComputeManager(manager.SchedulerDependentManager):
         self._last_bw_usage_poll = 0
         self._last_info_cache_heal = 0
         self.compute_api = compute.API()
+        self.extra_specs = {}
 
         super(ComputeManager, self).__init__(service_name="compute",
                                              *args, **kwargs)
@@ -300,6 +307,8 @@ class ComputeManager(manager.SchedulerDependentManager):
                     LOG.warning(_('Hypervisor driver does not support '
                                   'firewall rules'), instance=instance)
 
+        self._get_instance_type_extra_specs_capabilities(context)
+
     def _get_power_state(self, context, instance):
         """Retrieve the power state for the given instance."""
         LOG.debug(_('Checking state'), instance=instance)
@@ -307,6 +316,37 @@ class ComputeManager(manager.SchedulerDependentManager):
             return self.driver.get_info(instance)["state"]
         except exception.NotFound:
             return power_state.FAILED
+
+    def _get_instance_type_extra_specs_capabilities(self, context):
+        """Return extra capabilities to advertise for this compute host."""
+        for pair in FLAGS.instance_type_extra_specs:
+            keyval = pair.split(':', 1)
+            keyval[0] = keyval[0].strip()
+            keyval[1] = keyval[1].strip()
+            self.extra_specs[keyval[0]] = keyval[1]
+    
+        # Check instances that were already running. If so, reduce capabilities
+        instances = self.db.instance_get_all_by_host(context, self.host)
+        for instance in instances:
+            instance_type_extra_specs = \
+                self.db.instance_type_extra_specs_get(context, \
+                    instance.instance_type_id)
+            for key in instance_type_extra_specs:
+                op_req = instance_type_extra_specs[key]
+                words = op_req.split()
+                op = words[0]
+                req = words[1]
+                if op == '=':
+                    self.extra_specs[key] = str(float(self.extra_specs[key]) \
+                        - float(req))
+                if op.find('==') == 0 \
+                    or op.find('>=') == 0 or op.find('<=') == 0:
+                        if op.find('-') == 2:
+                            self.extra_specs[key] = \
+                                str(float(self.extra_specs[key]) + float(req))
+                        elif op.find('+') == 2:
+                            self.extra_specs[key] = \
+                                str(float(self.extra_specs[key]) - float(req))
 
     def get_console_topic(self, context, **kwargs):
         """Retrieves the console host for a project on this host.
@@ -447,6 +487,26 @@ class ComputeManager(manager.SchedulerDependentManager):
                 instance = self._spawn(context, instance, image_meta,
                                        network_info, block_device_info,
                                        injected_files, admin_password)
+                # deduct resource HERE
+                instance_type_extra_specs = \
+                    self.db.instance_type_extra_specs_get( \
+                        context, instance.instance_type_id)
+                for key in instance_type_extra_specs:
+                    op_req = instance_type_extra_specs[key]
+                    words = op_req.split()
+                    op = words[0]
+                    req = words[1]
+                    if op == '=':
+                        self.extra_specs[key] = \
+                            str(float(self.extra_specs[key]) - float(req))
+                    if op.find('==') == 0 \
+                        or op.find('>=') == 0 or op.find('<=') == 0:
+                            if op.find('-') == 2:
+                                self.extra_specs[key] = \
+                                    str(float(self.extra_specs[key]) + float(req))
+                            elif op.find('+') == 2:
+                                self.extra_specs[key] = \
+                                    str(float(self.extra_specs[key]) - float(req))
             except Exception:
                 with excutils.save_and_reraise_exception():
                     self._deallocate_network(context, instance)
@@ -760,6 +820,28 @@ class ComputeManager(manager.SchedulerDependentManager):
         system_meta = self.db.instance_system_metadata_get(context,
                 instance_uuid)
         self.db.instance_destroy(context, instance_uuid)
+
+        # add resource back HERE
+        instance_type_extra_specs = \
+            self.db.instance_type_extra_specs_get( \
+                context, instance.instance_type_id)
+        for key in instance_type_extra_specs:
+            op_req = instance_type_extra_specs[key]
+            words = op_req.split()
+            op = words[0]
+            req = words[1]
+            if op == '=':
+                self.extra_specs[key] = str(float(self.extra_specs[key]) \
+                    + float(req))
+            if op.find('==') == 0 \
+                or op.find('>=') == 0 or op.find('<=') == 0:
+                    if op.find('-') == 2:
+                        self.extra_specs[key] = \
+                            str(float(self.extra_specs[key]) - float(req))
+                    elif op.find('+') == 2:
+                        self.extra_specs[key] = \
+                            str(float(self.extra_specs[key]) + float(req))
+
         self._notify_about_instance_usage(context, instance, "delete.end",
                 system_metadata=system_meta)
 
