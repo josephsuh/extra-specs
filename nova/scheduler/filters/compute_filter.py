@@ -49,13 +49,13 @@ class ComputeFilter(filters.BaseHostFilter):
                 else:
                     op = words[0]
                     new_req = words[1]
-                    for i in range (2,len(words)):
+                    for i in range(2, len(words)):
                         new_req += words[i]
 
                     if op == '=':
                         if float(new_req) > float(cap):
                             return False
-                    elif op == '<in>': # TBD: multiple ins
+                    elif op == '<in>':
                         if cap.find(new_req) == -1:
                             return False
                     elif op == '==':
@@ -89,9 +89,9 @@ class ComputeFilter(filters.BaseHostFilter):
                     elif op.find('>=') == 0:
                         if float(new_req) > float(cap):
                             return False
-                    elif op == '<or>': # Ex: <or> v1 <or> v2 <or> v3
+                    elif op == '<or>':  # Ex: <or> v1 <or> v2 <or> v3
                         found = 0
-                        for idx in range (1, len(words), 2):
+                        for idx in range(1, len(words), 2):
                             if words[idx] == cap:
                                 found = 1
                                 break

@@ -324,7 +324,7 @@ class ComputeManager(manager.SchedulerDependentManager):
             keyval[0] = keyval[0].strip()
             keyval[1] = keyval[1].strip()
             self.extra_specs[keyval[0]] = keyval[1]
-    
+
         # Check instances that were already running. If so, reduce capabilities
         instances = self.db.instance_get_all_by_host(context, self.host)
         for instance in instances:
@@ -503,10 +503,12 @@ class ComputeManager(manager.SchedulerDependentManager):
                         or op.find('>=') == 0 or op.find('<=') == 0:
                             if op.find('-') == 2:
                                 self.extra_specs[key] = \
-                                    str(float(self.extra_specs[key]) + float(req))
+                                    str(float(self.extra_specs[key]) \
+                                    + float(req))
                             elif op.find('+') == 2:
                                 self.extra_specs[key] = \
-                                    str(float(self.extra_specs[key]) - float(req))
+                                    str(float(self.extra_specs[key]) \
+                                    - float(req))
             except Exception:
                 with excutils.save_and_reraise_exception():
                     self._deallocate_network(context, instance)
