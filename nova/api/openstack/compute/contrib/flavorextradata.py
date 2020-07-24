@@ -51,7 +51,7 @@ class FlavorextradataController(wsgi.Controller):
     def show(self, req, resp_obj, id):
         context = req.environ['nova.context']
         if authorize(context):
-            # Attach our slave template to the response object
+            # Attach our subordinate template to the response object
             resp_obj.attach(xml=FlavorextradatumTemplate())
 
             try:
@@ -67,7 +67,7 @@ class FlavorextradataController(wsgi.Controller):
     def detail(self, req, resp_obj):
         context = req.environ['nova.context']
         if authorize(context):
-            # Attach our slave template to the response object
+            # Attach our subordinate template to the response object
             resp_obj.attach(xml=FlavorextradataTemplate())
 
             flavors = list(resp_obj.obj['flavors'])
@@ -81,7 +81,7 @@ class FlavorextradataController(wsgi.Controller):
     def create(self, req, body, resp_obj):
         context = req.environ['nova.context']
         if authorize(context):
-            # Attach our slave template to the response object
+            # Attach our subordinate template to the response object
             resp_obj.attach(xml=FlavorextradatumTemplate())
 
             try:
@@ -118,7 +118,7 @@ class FlavorextradatumTemplate(xmlutil.TemplateBuilder):
     def construct(self):
         root = xmlutil.TemplateElement('flavor', selector='flavor')
         make_flavor(root)
-        return xmlutil.SlaveTemplate(root, 1, nsmap={
+        return xmlutil.SubordinateTemplate(root, 1, nsmap={
             Flavorextradata.alias: Flavorextradata.namespace})
 
 
@@ -127,5 +127,5 @@ class FlavorextradataTemplate(xmlutil.TemplateBuilder):
         root = xmlutil.TemplateElement('flavors')
         elem = xmlutil.SubTemplateElement(root, 'flavor', selector='flavors')
         make_flavor(elem)
-        return xmlutil.SlaveTemplate(root, 1, nsmap={
+        return xmlutil.SubordinateTemplate(root, 1, nsmap={
             Flavorextradata.alias: Flavorextradata.namespace})

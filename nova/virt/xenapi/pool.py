@@ -59,51 +59,51 @@ class ResourcePool(object):
     def add_to_aggregate(self, context, aggregate, host, **kwargs):
         """Add a compute host to an aggregate."""
         if len(aggregate.hosts) == 1:
-            # this is the first host of the pool -> make it master
+            # this is the first host of the pool -> make it main
             self._init_pool(aggregate.id, aggregate.name)
-            # save metadata so that we can find the master again
+            # save metadata so that we can find the main again
             values = {
                 'operational_state': aggregate_states.ACTIVE,
-                'metadata': {'master_compute': host,
+                'metadata': {'main_compute': host,
                              host: self._host_uuid},
                 }
             db.aggregate_update(context, aggregate.id, values)
         else:
             # the pool is already up and running, we need to figure out
             # whether we can serve the request from this host or not.
-            master_compute = aggregate.metadetails['master_compute']
-            if master_compute == FLAGS.host and master_compute != host:
-                # this is the master ->  do a pool-join
-                # To this aim, nova compute on the slave has to go down.
+            main_compute = aggregate.metadetails['main_compute']
+            if main_compute == FLAGS.host and main_compute != host:
+                # this is the main ->  do a pool-join
+                # To this aim, nova compute on the subordinate has to go down.
                 # NOTE: it is assumed that ONLY nova compute is running now
-                self._join_slave(aggregate.id, host,
+                self._join_subordinate(aggregate.id, host,
                                  kwargs.get('compute_uuid'),
                                  kwargs.get('url'), kwargs.get('user'),
                                  kwargs.get('passwd'))
                 metadata = {host: kwargs.get('xenhost_uuid'), }
                 db.aggregate_metadata_add(context, aggregate.id, metadata)
-            elif master_compute and master_compute != host:
-                # send rpc cast to master, asking to add the following
+            elif main_compute and main_compute != host:
+                # send rpc cast to main, asking to add the following
                 # host with specified credentials.
-                forward_request(context, "add_aggregate_host", master_compute,
+                forward_request(context, "add_aggregate_host", main_compute,
                                 aggregate.id, host,
                                 self._host_addr, self._host_uuid)
 
     def remove_from_aggregate(self, context, aggregate, host, **kwargs):
         """Remove a compute host from an aggregate."""
-        master_compute = aggregate.metadetails.get('master_compute')
-        if master_compute == FLAGS.host and master_compute != host:
-            # this is the master -> instruct it to eject a host from the pool
+        main_compute = aggregate.metadetails.get('main_compute')
+        if main_compute == FLAGS.host and main_compute != host:
+            # this is the main -> instruct it to eject a host from the pool
             host_uuid = db.aggregate_metadata_get(context, aggregate.id)[host]
-            self._eject_slave(aggregate.id,
+            self._eject_subordinate(aggregate.id,
                               kwargs.get('compute_uuid'), host_uuid)
             db.aggregate_metadata_delete(context, aggregate.id, host)
-        elif master_compute == host:
-            # Remove master from its own pool -> destroy pool only if the
-            # master is on its own, otherwise raise fault. Destroying a
-            # pool made only by master is fictional
+        elif main_compute == host:
+            # Remove main from its own pool -> destroy pool only if the
+            # main is on its own, otherwise raise fault. Destroying a
+            # pool made only by main is fictional
             if len(aggregate.hosts) > 1:
-                # NOTE: this could be avoided by doing a master
+                # NOTE: this could be avoided by doing a main
                 # re-election, but this is simpler for now.
                 raise exception.InvalidAggregateAction(
                                     aggregate_id=aggregate.id,
@@ -112,11 +112,11 @@ class ResourcePool(object):
                                              'from the pool; pool not empty')
                                              % locals())
             self._clear_pool(aggregate.id)
-            for key in ['master_compute', host]:
+            for key in ['main_compute', host]:
                 db.aggregate_metadata_delete(context, aggregate.id, key)
-        elif master_compute and master_compute != host:
-            # A master exists -> forward pool-eject request to master
-            forward_request(context, "remove_aggregate_host", master_compute,
+        elif main_compute and main_compute != host:
+            # A main exists -> forward pool-eject request to main
+            forward_request(context, "remove_aggregate_host", main_compute,
                             aggregate.id, host,
                             self._host_addr, self._host_uuid)
         else:
@@ -124,20 +124,20 @@ class ResourcePool(object):
             raise exception.AggregateError(aggregate_id=aggregate.id,
                                            action='remove_from_aggregate',
                                            reason=_('Unable to eject %(host)s '
-                                           'from the pool; No master found')
+                                           'from the pool; No main found')
                                            % locals())
 
-    def _join_slave(self, aggregate_id, host, compute_uuid, url, user, passwd):
-        """Joins a slave into a XenServer resource pool."""
+    def _join_subordinate(self, aggregate_id, host, compute_uuid, url, user, passwd):
+        """Joins a subordinate into a XenServer resource pool."""
         try:
             args = {'compute_uuid': compute_uuid,
                     'url': url,
                     'user': user,
                     'password': passwd,
                     'force': json.dumps(FLAGS.use_join_force),
-                    'master_addr': self._host_addr,
-                    'master_user': FLAGS.xenapi_connection_username,
-                    'master_pass': FLAGS.xenapi_connection_password, }
+                    'main_addr': self._host_addr,
+                    'main_user': FLAGS.xenapi_connection_username,
+                    'main_pass': FLAGS.xenapi_connection_password, }
             self._session.call_plugin('xenhost', 'host_join', args)
         except self.XenAPI.Failure as e:
             LOG.error(_("Pool-Join failed: %(e)s") % locals())
@@ -146,8 +146,8 @@ class ResourcePool(object):
                                            reason=_('Unable to join %(host)s '
                                                   'in the pool') % locals())
 
-    def _eject_slave(self, aggregate_id, compute_uuid, host_uuid):
-        """Eject a slave from a XenServer resource pool."""
+    def _eject_subordinate(self, aggregate_id, compute_uuid, host_uuid):
+        """Eject a subordinate from a XenServer resource pool."""
         try:
             # shutdown nova-compute; if there are other VMs running, e.g.
             # guest instances, the eject will fail. That's a precaution
@@ -188,22 +188,22 @@ class ResourcePool(object):
                                            reason=str(e.details))
 
 
-def forward_request(context, request_type, master, aggregate_id,
-                    slave_compute, slave_address, slave_uuid):
-    """Casts add/remove requests to the pool master."""
+def forward_request(context, request_type, main, aggregate_id,
+                    subordinate_compute, subordinate_address, subordinate_uuid):
+    """Casts add/remove requests to the pool main."""
     # replace the address from the xenapi connection url
     # because this might be 169.254.0.1, i.e. xenapi
     # NOTE: password in clear is not great, but it'll do for now
-    sender_url = swap_xapi_host(FLAGS.xenapi_connection_url, slave_address)
-    rpc.cast(context, db.queue_get_for(context, FLAGS.compute_topic, master),
+    sender_url = swap_xapi_host(FLAGS.xenapi_connection_url, subordinate_address)
+    rpc.cast(context, db.queue_get_for(context, FLAGS.compute_topic, main),
              {"method": request_type,
               "args": {"aggregate_id": aggregate_id,
-                       "host": slave_compute,
+                       "host": subordinate_compute,
                        "url": sender_url,
                        "user": FLAGS.xenapi_connection_username,
                        "passwd": FLAGS.xenapi_connection_password,
                        "compute_uuid": vm_utils.get_this_vm_uuid(),
-                       "xenhost_uuid": slave_uuid, },
+                       "xenhost_uuid": subordinate_uuid, },
              })
 
 

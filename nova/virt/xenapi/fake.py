@@ -593,7 +593,7 @@ class SessionBase(object):
             return self._session
         elif name == 'xenapi':
             return _Dispatcher(self.xenapi_request, None)
-        elif name.startswith('login') or name.startswith('slave_local'):
+        elif name.startswith('login') or name.startswith('subordinate_local'):
             return lambda *params: self._login(name, params)
         elif name.startswith('Async'):
             return lambda *params: self._async(name, params)

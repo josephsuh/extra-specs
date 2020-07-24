@@ -499,7 +499,7 @@ class XenAPISession(object):
     def __init__(self, url, user, pw):
         self.XenAPI = self.get_imported_xenapi()
         self._sessions = queue.Queue()
-        self.is_slave = False
+        self.is_subordinate = False
         exception = self.XenAPI.Failure(_("Unable to log in to XenAPI "
                                           "(is the Dom0 disk full?)"))
         url = self._create_first_session(url, user, pw, exception)
@@ -513,13 +513,13 @@ class XenAPISession(object):
             with timeout.Timeout(FLAGS.xenapi_login_timeout, exception):
                 session.login_with_password(user, pw)
         except self.XenAPI.Failure, e:
-            # if user and pw of the master are different, we're doomed!
+            # if user and pw of the main are different, we're doomed!
             if e.details[0] == 'HOST_IS_SLAVE':
-                master = e.details[1]
-                url = pool.swap_xapi_host(url, master)
+                main = e.details[1]
+                url = pool.swap_xapi_host(url, main)
                 session = self.XenAPI.Session(url)
                 session.login_with_password(user, pw)
-                self.is_slave = True
+                self.is_subordinate = True
             else:
                 raise
         self._sessions.put(session)
@@ -533,7 +533,7 @@ class XenAPISession(object):
             self._sessions.put(session)
 
     def _get_host_uuid(self):
-        if self.is_slave:
+        if self.is_subordinate:
             try:
                 aggr = db.aggregate_get_by_host(context.get_admin_context(),
                                                 FLAGS.host)
