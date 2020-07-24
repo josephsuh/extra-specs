@@ -35,9 +35,9 @@ ldap_dns_opts = [
     cfg.StrOpt('ldap_dns_password',
                default='password',
                help='password for ldap DNS'),
-    cfg.StrOpt('ldap_dns_soa_hostmaster',
-               default='hostmaster@example.org',
-               help='Hostmaster for ldap dns driver Statement of Authority'),
+    cfg.StrOpt('ldap_dns_soa_hostmain',
+               default='hostmain@example.org',
+               help='Hostmain for ldap dns driver Statement of Authority'),
     cfg.MultiStrOpt('ldap_dns_servers',
                     default=['dns.example.org'],
                     help='DNS Servers for ldap dns driver'),
@@ -144,7 +144,7 @@ class DomainEntry(DNSEntry):
         date = time.strftime('%Y%m%d%H%M%S')
         soa = '%s %s %s %s %s %s %s' % (
                  flags.FLAGS.ldap_dns_servers[0],
-                 flags.FLAGS.ldap_dns_soa_hostmaster,
+                 flags.FLAGS.ldap_dns_soa_hostmain,
                  date,
                  flags.FLAGS.ldap_dns_soa_refresh,
                  flags.FLAGS.ldap_dns_soa_retry,

@@ -767,7 +767,7 @@ class CloudController(object):
             err = _("Value (%s) for parameter GroupName is invalid."
                     " Content limited to Alphanumeric characters, "
                     "spaces, dashes, and underscores.") % group_name
-            # err not that of master ec2 implementation, as they fail to raise.
+            # err not that of main ec2 implementation, as they fail to raise.
             raise exception.InvalidParameterValue(err=err)
 
         if len(str(group_name)) > 255:

@@ -1788,7 +1788,7 @@ class XenAPIAggregateTestCase(test.TestCase):
         stubs.stubout_session(self.stubs, stubs.FakeSessionForVMTests)
         self.context = context.get_admin_context()
         self.conn = xenapi_conn.get_connection(False)
-        self.fake_metadata = {'master_compute': 'host',
+        self.fake_metadata = {'main_compute': 'host',
                               'host': xenapi_fake.get_record('host',
                                                              host_ref)['uuid']}
 
@@ -1814,11 +1814,11 @@ class XenAPIAggregateTestCase(test.TestCase):
         self.assertDictMatch(self.fake_metadata, result.metadetails)
         self.assertEqual(aggregate_states.ACTIVE, result.operational_state)
 
-    def test_join_slave(self):
-        """Ensure join_slave gets called when the request gets to master."""
-        def fake_join_slave(id, compute_uuid, host, url, user, password):
-            fake_join_slave.called = True
-        self.stubs.Set(self.conn._pool, "_join_slave", fake_join_slave)
+    def test_join_subordinate(self):
+        """Ensure join_subordinate gets called when the request gets to main."""
+        def fake_join_subordinate(id, compute_uuid, host, url, user, password):
+            fake_join_subordinate.called = True
+        self.stubs.Set(self.conn._pool, "_join_subordinate", fake_join_subordinate)
 
         aggregate = self._aggregate_setup(hosts=['host', 'host2'],
                                           metadata=self.fake_metadata)
@@ -1828,7 +1828,7 @@ class XenAPIAggregateTestCase(test.TestCase):
                                          user='fake_user',
                                          passwd='fake_pass',
                                          xenhost_uuid='fake_uuid')
-        self.assertTrue(fake_join_slave.called)
+        self.assertTrue(fake_join_subordinate.called)
 
     def test_add_to_aggregate_first_host(self):
         def fake_pool_set_name_label(self, session, pool_ref, name):
@@ -1866,19 +1866,19 @@ class XenAPIAggregateTestCase(test.TestCase):
                           self.conn._pool.remove_from_aggregate,
                           None, result, "test_host")
 
-    def test_remove_slave(self):
-        """Ensure eject slave gets called."""
-        def fake_eject_slave(id, compute_uuid, host_uuid):
-            fake_eject_slave.called = True
-        self.stubs.Set(self.conn._pool, "_eject_slave", fake_eject_slave)
+    def test_remove_subordinate(self):
+        """Ensure eject subordinate gets called."""
+        def fake_eject_subordinate(id, compute_uuid, host_uuid):
+            fake_eject_subordinate.called = True
+        self.stubs.Set(self.conn._pool, "_eject_subordinate", fake_eject_subordinate)
 
         self.fake_metadata['host2'] = 'fake_host2_uuid'
         aggregate = self._aggregate_setup(hosts=['host', 'host2'],
                                           metadata=self.fake_metadata)
         self.conn._pool.remove_from_aggregate(self.context, aggregate, "host2")
-        self.assertTrue(fake_eject_slave.called)
+        self.assertTrue(fake_eject_subordinate.called)
 
-    def test_remove_master_solo(self):
+    def test_remove_main_solo(self):
         """Ensure metadata are cleared after removal."""
         def fake_clear_pool(id):
             fake_clear_pool.called = True
@@ -1892,8 +1892,8 @@ class XenAPIAggregateTestCase(test.TestCase):
         self.assertDictMatch({}, result.metadetails)
         self.assertEqual(aggregate_states.ACTIVE, result.operational_state)
 
-    def test_remote_master_non_empty_pool(self):
-        """Ensure AggregateError is raised if removing the master."""
+    def test_remote_main_non_empty_pool(self):
+        """Ensure AggregateError is raised if removing the main."""
         aggregate = self._aggregate_setup(aggr_state=aggregate_states.ACTIVE,
                                           hosts=['host', 'host2'],
                                           metadata=self.fake_metadata)
